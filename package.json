@@ -27,9 +27,21 @@
     "prettier": "^2.8.8",
     "typescript": "^5.4.5"
   },
+  "peerDependencies": {
+    "serverless": "^3"
+  },
   "engines": {
     "node": ">=20.11.1"
   },
+  "keywords": [
+    "serverless",
+    "plugin",
+    "environment",
+    "env",
+    "config",
+    "configuration",
+    "secrets"
+  ],
   "scripts": {
     "prepare": "husky install",
     "lint": "eslint --ext \".js\" --fix .",
