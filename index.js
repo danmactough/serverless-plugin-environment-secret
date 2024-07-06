@@ -3,9 +3,10 @@ class ServerlessEnvironmentSecret {
     this.serverless = serverless;
     this.options = options;
 
+    this.provider = this.serverless.getProvider('aws');
     this.service = this.serverless.service.getServiceName();
-    this.stage = this.serverless.service.provider.stage;
-    this.stackName = this.serverless.service.provider.stackName;
+    this.stage = this.provider.getStage();
+    this.stackName = this.provider.naming.getStackName();
 
     this.customEnvironment = this.serverless.service.custom.environment ?? {};
     // We need to evaluate this _before_ the variable gets dereferenced
