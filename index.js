@@ -1,11 +1,20 @@
 class ServerlessEnvironmentSecret {
+  // Allow the name of the secret to be overridden by SLS_ENVIRONMENT_SECRET_NAME
+  get secretName() {
+    return (
+      this.customEnvironment.SLS_ENVIRONMENT_SECRET_NAME ??
+      `${this.stage}/${this.service}/environment`
+    );
+  }
+
   constructor(serverless, options) {
     this.serverless = serverless;
     this.options = options;
 
+    this.provider = this.serverless.getProvider('aws');
     this.service = this.serverless.service.getServiceName();
-    this.stage = this.serverless.service.provider.stage;
-    this.stackName = this.serverless.service.provider.stackName;
+    this.stage = this.provider.getStage();
+    this.stackName = this.provider.naming.getStackName();
 
     this.customEnvironment = this.serverless.service.custom.environment ?? {};
     // We need to evaluate this _before_ the variable gets dereferenced
@@ -64,6 +73,8 @@ class ServerlessEnvironmentSecret {
 
     this.hooks = {
       initialize: () => {
+        // Find any secrets in custom.environment and make them stackParameters
+        // and CloudFormation parameters
         for (const [key, value] of Object.entries(this.customEnvironment)) {
           if (value?.SecretValue) {
             this.stackParameters.push({
@@ -76,10 +87,14 @@ class ServerlessEnvironmentSecret {
             };
           }
         }
+        // Set the environment variable SLS_ENVIRONMENT_SECRET_NAME to the name of the secret
+        Object.assign(this.serverless.service.provider.environment, {
+          SLS_ENVIRONMENT_SECRET_NAME: this.secretName,
+        });
       },
-      'before:package:finalize': () => this.#updateCloudFormationTemplate(),
       'before:offline:start': () => this.#expandLocalEnvironment(),
-      'after:invoke:local:loadEnvVars': () => this.#expandLocalEnvironment(),
+      'before:invoke:local:loadEnvVars': () => this.#expandLocalEnvironment(),
+      'before:package:finalize': () => this.#updateCloudFormationTemplate(),
       // The aws:deploy:deploy:createStack hook is NOT related to our main stack!
       // It will be invoked to deploy only the serverless deployment bucket
       // management resources.
@@ -120,23 +135,28 @@ class ServerlessEnvironmentSecret {
       EnvironmentSecret: {
         Type: 'AWS::SecretsManager::Secret',
         Properties: {
-          Name: `${this.stage}/${this.service}/environment`,
+          Name: this.secretName,
           Description: `Environment for ${this.stackName}`,
           SecretString: cfJoin('', [
             '{',
             cfJoin(
               ',',
-              Object.entries(this.customEnvironment).map(([key, value]) =>
-                cfJoin('', [
-                  `"${key}": `,
-                  cfJoin('', [
-                    '"',
-                    typeof value === 'string' || !('SecretValue' in value)
-                      ? value // The literal value from the config vs.
-                      : { Ref: key }, // A Ref to the SecretValue
-                    '"',
-                  ]),
-                ])
+              Object.entries(this.customEnvironment).flatMap(([key, value]) =>
+                // we don't need to store the name of the secret inside the secret
+                key === 'SLS_ENVIRONMENT_SECRET_NAME'
+                  ? []
+                  : [
+                      cfJoin('', [
+                        `"${key}": `,
+                        cfJoin('', [
+                          '"',
+                          typeof value === 'string' || !('SecretValue' in value)
+                            ? value // The literal value from the config vs.
+                            : { Ref: key }, // A Ref to the SecretValue
+                          '"',
+                        ]),
+                      ]),
+                    ]
               )
             ),
             '}',
@@ -171,7 +191,7 @@ class ServerlessEnvironmentSecret {
       Action: ['secretsmanager:GetSecretValue'],
       Resource: [
         {
-          'Fn::Sub': `arn:\${AWS::Partition}:secretsmanager:\${AWS::Region}:\${AWS::AccountId}:secret:${this.stage}/${this.service}/environment-*`,
+          'Fn::Sub': `arn:\${AWS::Partition}:secretsmanager:\${AWS::Region}:\${AWS::AccountId}:secret:${this.secretName}-*`,
         },
       ],
     };
