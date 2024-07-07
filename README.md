@@ -70,3 +70,5 @@ module.exports.handler = async (event) => {
   // handle event
 };
 ```
+
+Check out the [example app](./example/), which you can deploy and play around with to better understand how this plugin works and assure yourself that it prevents secrets from being leaked.
