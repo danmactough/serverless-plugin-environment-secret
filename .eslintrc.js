@@ -15,7 +15,6 @@ module.exports = {
     ecmaVersion: 2024,
   },
   rules: {
-    'no-confusing-arrow': ['error', { allowParens: true }],
     'no-console': 'off',
     'no-extend-native': 'error',
     'no-promise-executor-return': 'error',

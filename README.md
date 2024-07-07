@@ -28,6 +28,8 @@ plugins:
 - stop using `provider.environment` to provide configuration via environment variables -- only use `provider.environment` when absolutely necessary (such as with `NODE_OPTIONS`, which must be an environment variable to change runtime behavior)
 - instead, place that configuration in `custom.environment`
 - for any configuration variables that are secrets (such as API keys), store those secrets in Secrets Manager and use the `ssm:/aws/reference/secretsmanager/secret_ID_in_Secrets_Manager` syntax to reference those secrets as demonstrated below
+- the name of the environment secret will be exposed via `process.env.SLS_ENVIRONMENT_SECRET_NAME`
+- the default name for the environment secret is `${stage}/${service}/environment`, but you can override the default name by defining the variable `SLS_ENVIRONMENT_SECRET_NAME`
 
 ```yaml
 custom:
@@ -41,21 +43,30 @@ custom:
       SecretValue: ${ssm:/aws/reference/secretsmanager/production/slack/accessToken}
     # This is NOT how to specify a secret and will trigger an error to prevent leaking the secret
     BadSlackToken: ${ssm:/aws/reference/secretsmanager/production/slack/accessToken}
+    # You can override the default secret name by defining the variable SLS_ENVIRONMENT_SECRET_NAME
+    SLS_ENVIRONMENT_SECRET_NAME: ${self:provider.stage}/my-custom-environment-secret-name
 ```
 
 When your Serverless application is running locally (using `serverless invoke local` or `serverless offline`), the plugin will automatically add the custom environment to `process.env`.
 
-When your stack is deployed, the plugin will create a Secrets Manager secret named `{stage}/{service name}/environment` and store your custom environment in that secret. Then in your Lambda, you'll want to get the secret and add the custom environment to `process.env` with logic something like:
+When your stack is deployed, you'll want to get the secret and add the custom environment to `process.env` with logic something like:
 
 ```js
-const { SecretsManager } = require('aws-sdk');
-const sm = new SecretsManager();
-if (!(process.IS_LOCAL || process.IS_OFFLINE)) {
-  const { SecretString } = await sm
-    .getSecretValue({
-      SecretId: '{stage}/{service name}/environment',
-    })
-    .promise();
-  Object.assign(process.env, JSON.parse(SecretString));
-}
+const { SecretsManager } = require('@aws-sdk/client-secrets-manager');
+const secretsManager = new SecretsManager();
+
+const expandEnvironment = async () => {
+  if (!(process.env.IS_OFFLINE || process.env.IS_LOCAL)) {
+    const { SecretString } = await secretsManager.getSecretValue({
+      SecretId: process.env.SLS_ENVIRONMENT_SECRET_NAME,
+    });
+    Object.assign(process.env, JSON.parse(SecretString));
+  }
+};
+
+module.exports.handler = async (event) => {
+  await expandEnvironment();
+
+  // handle event
+};
 ```
