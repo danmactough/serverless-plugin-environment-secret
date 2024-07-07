@@ -1,6 +1,6 @@
 {
   "name": "serverless-plugin-environment-secret",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Serverless plugin for easily moving environment variables to a Secrets Manager secret",
   "repository": {
     "type": "git",
